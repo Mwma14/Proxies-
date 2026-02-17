@@ -1,5 +1,6 @@
 {
   "rewrites": [
-    { "source": "/stream/:path*", "destination": "/api/stream" }
+    { "source": "/stream/:path*", "destination": "/api/stream" },
+    { "source": "/((?!api/).*)", "destination": "/api/proxy" }
   ]
 }
