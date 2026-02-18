@@ -1,6 +1,8 @@
 {
   "rewrites": [
-    { "source": "/stream/:path*", "destination": "/api/stream" },
-    { "source": "/((?!api/).*)", "destination": "/api/proxy" }
+    {
+      "source": "/stream/:path*",
+      "destination": "https://tw.thewayofthedragg.workers.dev/:path*"
+    }
   ]
 }
