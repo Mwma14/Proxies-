@@ -1,52 +1,48 @@
-export const config = {
-  api: {
-    bodyParser: false,
-    responseLimit: false,
-  },
-};
-
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS, HEAD",
-  "Access-Control-Allow-Headers": "range, content-type",
-  "Access-Control-Expose-Headers": "content-range, content-length, accept-ranges, content-type",
-};
-
 export default async function handler(req, res) {
-  const path = req.url.replace(/^\/stream/, "");
-  const targetUrl = "https://tw.thewayofthedragg.workers.dev" + path;
+  const targetUrl = req.query.url;
+  if (!targetUrl) {
+    return res.status(400).json({ error: "Missing 'url' parameter" });
+  }
+
+  // Set CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  res.setHeader("Access-Control-Expose-Headers",
+    "Content-Length, Content-Range, Content-Type, Accept-Ranges");
 
   if (req.method === "OPTIONS") {
-    for (const [k, v] of Object.entries(CORS)) res.setHeader(k, v);
-    return res.status(204).end();
+    return res.status(200).end();
   }
 
+  // Forward Range header for seek support
   const headers = {};
-  if (req.headers["range"]) headers["Range"] = req.headers["range"];
-  if (req.headers["user-agent"]) headers["User-Agent"] = req.headers["user-agent"];
-
-  try {
-    const response = await fetch(targetUrl, {
-      method: req.method,
-      headers,
-      redirect: "follow",
-    });
-
-    const forwardHeaders = [
-      "content-type", "content-length", "content-range",
-      "accept-ranges", "content-disposition",
-    ];
-    for (const key of forwardHeaders) {
-      const val = response.headers.get(key);
-      if (val) res.setHeader(key, val);
-    }
-
-    for (const [k, v] of Object.entries(CORS)) res.setHeader(k, v);
-
-    const data = await response.arrayBuffer();
-    res.status(response.status).send(Buffer.from(data));
-  } catch (err) {
-    for (const [k, v] of Object.entries(CORS)) res.setHeader(k, v);
-    res.status(502).json({ error: "Stream proxy error", details: err.message });
+  if (req.headers.range) {
+    headers["Range"] = req.headers.range;
   }
+
+  const upstream = await fetch(targetUrl, { headers, redirect: "follow" });
+
+  // Forward relevant headers
+  const ct = upstream.headers.get("content-type");
+  if (ct) res.setHeader("Content-Type", ct);
+
+  const cl = upstream.headers.get("content-length");
+  if (cl) res.setHeader("Content-Length", cl);
+
+  const cr = upstream.headers.get("content-range");
+  if (cr) res.setHeader("Content-Range", cr);
+
+  const ar = upstream.headers.get("accept-ranges");
+  if (ar) res.setHeader("Accept-Ranges", ar);
+
+  res.status(upstream.status);
+
+  // Pipe the video stream
+  const reader = upstream.body.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    res.write(value);
+  }
+  res.end();
 }
