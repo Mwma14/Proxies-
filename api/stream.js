@@ -28,11 +28,21 @@ export default async function handler(req) {
   }
 
   try {
-    const upstreamHeaders = {};
-
     const range = req.headers.get('range');
+    const upstreamHeaders = {};
     if (range) {
       upstreamHeaders['Range'] = range;
+    }
+
+    // If no Range header (initial request), do a HEAD first to get Content-Length
+    let totalSize = null;
+    if (!range) {
+      try {
+        const head = await fetch(targetUrl, { method: 'HEAD', redirect: 'follow' });
+        totalSize = head.headers.get('content-length');
+      } catch (e) {
+        // HEAD failed, proceed without it
+      }
     }
 
     const upstream = await fetch(targetUrl, {
@@ -56,13 +66,13 @@ export default async function handler(req) {
     const contentType = upstream.headers.get('content-type');
     responseHeaders['Content-Type'] = contentType || 'application/octet-stream';
 
-    const contentLength = upstream.headers.get('content-length');
+    // Use upstream Content-Length, or fallback to HEAD result
+    const contentLength = upstream.headers.get('content-length') || totalSize;
     if (contentLength) responseHeaders['Content-Length'] = contentLength;
 
     const contentRange = upstream.headers.get('content-range');
     if (contentRange) responseHeaders['Content-Range'] = contentRange;
 
-    // Always advertise byte-range support so the browser enables seeking
     responseHeaders['Accept-Ranges'] = 'bytes';
 
     return new Response(upstream.body, {
@@ -78,4 +88,5 @@ export default async function handler(req) {
       }
     );
   }
-}
+                }
+  
