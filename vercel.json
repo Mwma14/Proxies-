@@ -3,6 +3,10 @@
     {
       "source": "/stream/:path*",
       "destination": "https://tw.thewayofthedragg.workers.dev/:path*"
+    },
+    {
+      "source": "/:path*",
+      "destination": "https://icnfjixjohbxjxqbnnac.supabase.co/:path*"
     }
   ]
 }
