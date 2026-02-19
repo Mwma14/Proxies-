@@ -1,15 +1,13 @@
 // api/stream.js
-// Deploy this to your proxies-lake Vercel project
 
 export const config = {
-  runtime: 'edge', // Use Edge Runtime for streaming support
+  runtime: 'edge',
 };
 
 export default async function handler(req) {
   const { searchParams } = new URL(req.url);
   const targetUrl = searchParams.get('url');
 
-  // CORS headers
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
@@ -18,7 +16,6 @@ export default async function handler(req) {
       'Content-Length, Content-Range, Content-Type, Accept-Ranges',
   };
 
-  // Handle preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -31,16 +28,13 @@ export default async function handler(req) {
   }
 
   try {
-    // Build upstream request headers
     const upstreamHeaders = {};
 
-    // Forward Range header for seeking / resume
     const range = req.headers.get('range');
     if (range) {
       upstreamHeaders['Range'] = range;
     }
 
-    // Fetch the actual video
     const upstream = await fetch(targetUrl, {
       method: 'GET',
       headers: upstreamHeaders,
@@ -57,7 +51,6 @@ export default async function handler(req) {
       );
     }
 
-    // Build response headers
     const responseHeaders = { ...corsHeaders };
 
     const contentType = upstream.headers.get('content-type');
@@ -69,12 +62,11 @@ export default async function handler(req) {
     const contentRange = upstream.headers.get('content-range');
     if (contentRange) responseHeaders['Content-Range'] = contentRange;
 
-    const acceptRanges = upstream.headers.get('accept-ranges');
-    if (acceptRanges) responseHeaders['Accept-Ranges'] = acceptRanges;
+    // Always advertise byte-range support so the browser enables seeking
+    responseHeaders['Accept-Ranges'] = 'bytes';
 
-    // Stream the video body through
     return new Response(upstream.body, {
-      status: upstream.status, // 200 or 206
+      status: upstream.status,
       headers: responseHeaders,
     });
   } catch (err) {
@@ -86,4 +78,4 @@ export default async function handler(req) {
       }
     );
   }
-      }
+}
