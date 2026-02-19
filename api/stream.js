@@ -1,8 +1,4 @@
-// api/stream.js
-
-export const config = {
-  runtime: 'edge',
-};
+export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
   const { searchParams } = new URL(req.url);
@@ -28,22 +24,9 @@ export default async function handler(req) {
   }
 
   try {
-    const range = req.headers.get('range');
     const upstreamHeaders = {};
-    if (range) {
-      upstreamHeaders['Range'] = range;
-    }
-
-    // If no Range header (initial request), do a HEAD first to get Content-Length
-    let totalSize = null;
-    if (!range) {
-      try {
-        const head = await fetch(targetUrl, { method: 'HEAD', redirect: 'follow' });
-        totalSize = head.headers.get('content-length');
-      } catch (e) {
-        // HEAD failed, proceed without it
-      }
-    }
+    const range = req.headers.get('range');
+    if (range) upstreamHeaders['Range'] = range;
 
     const upstream = await fetch(targetUrl, {
       method: 'GET',
@@ -54,39 +37,33 @@ export default async function handler(req) {
     if (!upstream.ok && upstream.status !== 206) {
       return new Response(
         JSON.stringify({ error: `Upstream returned ${upstream.status}` }),
-        {
-          status: upstream.status,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+        { status: upstream.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const responseHeaders = { ...corsHeaders };
 
-    const contentType = upstream.headers.get('content-type');
-    responseHeaders['Content-Type'] = contentType || 'application/octet-stream';
+    // Pass through upstream headers EXACTLY — do NOT manually set Content-Length
+    const passthrough = [
+      'content-type',
+      'content-length',
+      'content-range',
+      'accept-ranges',
+    ];
 
-    // Use upstream Content-Length, or fallback to HEAD result
-    const contentLength = upstream.headers.get('content-length') || totalSize;
-    if (contentLength) responseHeaders['Content-Length'] = contentLength;
-
-    const contentRange = upstream.headers.get('content-range');
-    if (contentRange) responseHeaders['Content-Range'] = contentRange;
-
-    responseHeaders['Accept-Ranges'] = 'bytes';
+    for (const key of passthrough) {
+      const val = upstream.headers.get(key);
+      if (val) responseHeaders[key] = val;
+    }
 
     return new Response(upstream.body, {
-      status: upstream.status,
+      status: upstream.status, // preserves 206 for Range requests
       headers: responseHeaders,
     });
   } catch (err) {
     return new Response(
       JSON.stringify({ error: err.message || 'Proxy fetch failed' }),
-      {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-                }
-  
+        }
